@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stadion Bron</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  body { font-family: -apple-system, sans-serif; background: var(--tg-theme-bg-color, #fff);
+         color: var(--tg-theme-text-color, #000); margin:0; padding:16px; }
+  .card { border:1px solid #eee; border-radius:14px; padding:14px; margin-bottom:12px;
+          box-shadow:0 2px 8px rgba(0,0,0,.05); }
+  .card h3 { margin:0 0 6px; }
+  .price { color:#2ecc71; font-weight:600; }
+  .muted { color:#888; font-size:14px; }
+</style>
+</head>
+<body>
+  <h2>🏟 Stadionlar</h2>
+  <div id="list">Yuklanmoqda...</div>
+
+<script>
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  tg.expand();
+
+  // BU YERDA o'z backend API manzilingizni ko'rsating, masalan:
+  // const API_URL = "https://sizning-domeningiz.com/api/stadiums";
+  const API_URL = null;
+
+  async function load() {
+    const listEl = document.getElementById('list');
+    if (!API_URL) {
+      listEl.innerHTML = '<p class="muted">API_URL sozlanmagan. Bu — namuna sahifa. ' +
+        'Flask/Node backend orqali /api/stadiums JSON endpoint yarating va shu yerga yozing.</p>';
+      return;
+    }
+    try {
+      const res = await fetch(API_URL);
+      const data = await res.json();
+      listEl.innerHTML = data.map(s => `
+        <div class="card">
+          <h3>${s.name}</h3>
+          <div class="muted">${s.region}, ${s.district}</div>
+          <div>${s.address}</div>
+          <div class="price">${Number(s.price).toLocaleString()} so'm/soat</div>
+        </div>
+      `).join('');
+    } catch (e) {
+      listEl.innerHTML = '<p class="muted">Xatolik: ma\'lumot yuklanmadi.</p>';
+    }
+  }
+  load();
+</script>
+</body>
+</html>
