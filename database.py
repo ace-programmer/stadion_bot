@@ -114,6 +114,12 @@ def update_user_region_district(telegram_id: int, region: str, district: str):
     _conn.commit()
 
 
+def get_all_users():
+    cur = _conn.cursor()
+    cur.execute("SELECT * FROM users")
+    return cur.fetchall()
+
+
 # ---------------- STADIUMS ----------------
 
 def create_stadium(owner_id: int, data: dict) -> int:
@@ -175,6 +181,19 @@ def update_stadium_field(stadium_id: int, field: str, value):
 
 def set_stadium_status(stadium_id: int, status: str):
     _conn.execute("UPDATE stadiums SET status=? WHERE id=?", (status, stadium_id))
+    _conn.commit()
+
+
+def get_stadiums_by_status(status: str):
+    cur = _conn.cursor()
+    cur.execute("SELECT * FROM stadiums WHERE status=? ORDER BY created_at DESC", (status,))
+    return cur.fetchall()
+
+
+def delete_stadium(stadium_id: int):
+    _conn.execute("DELETE FROM stadium_photos WHERE stadium_id=?", (stadium_id,))
+    _conn.execute("DELETE FROM stadium_times WHERE stadium_id=?", (stadium_id,))
+    _conn.execute("DELETE FROM stadiums WHERE id=?", (stadium_id,))
     _conn.commit()
 
 

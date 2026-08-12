@@ -188,3 +188,34 @@ def admin_review_kb(stadium_id: int):
     kb.button(text="❌ Rad etish", callback_data=f"admreject:{stadium_id}")
     kb.adjust(2)
     return kb.as_markup()
+
+
+def admin_status_kb():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⏳ Kutilmoqda", callback_data="admstatus:pending")
+    kb.button(text="✅ Tasdiqlangan", callback_data="admstatus:approved")
+    kb.button(text="❌ Rad etilgan", callback_data="admstatus:rejected")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def admin_stadium_info_kb(stadium_id: int):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🗑 O'chirish", callback_data=f"admdelask:{stadium_id}")
+    return kb.as_markup()
+
+
+def admin_delete_confirm_kb(stadium_id: int):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Ha, o'chirish", callback_data=f"admdelconfirm:{stadium_id}")
+    kb.button(text="❌ Bekor qilish", callback_data=f"admdelcancel:{stadium_id}")
+    kb.adjust(2)
+    return kb.as_markup()
+
+
+def broadcast_confirm_kb():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Barchaga yuborish", callback_data="broadcast_send")
+    kb.button(text="❌ Bekor qilish", callback_data="broadcast_cancel")
+    kb.adjust(1)
+    return kb.as_markup()

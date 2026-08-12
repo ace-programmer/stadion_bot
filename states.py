@@ -42,3 +42,8 @@ class ManagePhotos(StatesGroup):
 
 class ManageTimes(StatesGroup):
     waiting_date = State()
+
+
+class BroadcastState(StatesGroup):
+    waiting_content = State()
+    confirm = State()
