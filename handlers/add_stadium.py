@@ -192,6 +192,36 @@ async def confirm_cancel(call: CallbackQuery, state: FSMContext):
 @router.callback_query(AddStadium.confirm, F.data == "confirm_submit")
 async def confirm_submit(call: CallbackQuery, state: FSMContext, bot: Bot):
     data = await state.get_data()
+    lat, lon = data.get("latitude"), data.get("longitude")
+
+    if lat and lon:
+        duplicate = db.find_nearby_stadium(lat, lon)
+        if duplicate:
+            await call.answer()
+            status_label = {
+                "pending": "⏳ hozircha tasdiqlanmagan",
+                "approved": "✅ tasdiqlangan",
+            }.get(duplicate["status"], duplicate["status"])
+            await call.message.answer(
+                f"⚠️ <b>Diqqat!</b> Siz bergan manzilda allaqachon stadion ro'yxatda bor:\n\n"
+                f"🏟 «{duplicate['name']}» ({status_label})\n\n"
+                "Bitta stadion uchun bir nechta e'lon qo'yilishining oldini olish uchun bu "
+                "tekshiriladi. Agar bu chindan ham boshqa, alohida stadion bo'lsa, baribir "
+                "yuborishingiz mumkin — admin ko'rib chiqib hal qiladi.",
+                reply_markup=kb.duplicate_location_kb(),
+            )
+            return
+
+    await _finalize_stadium(call, state, bot, duplicate_warning=False)
+
+
+@router.callback_query(AddStadium.confirm, F.data == "confirm_force_submit")
+async def confirm_force_submit(call: CallbackQuery, state: FSMContext, bot: Bot):
+    await _finalize_stadium(call, state, bot, duplicate_warning=True)
+
+
+async def _finalize_stadium(call: CallbackQuery, state: FSMContext, bot: Bot, duplicate_warning: bool):
+    data = await state.get_data()
     user = db.get_user_by_tg(call.from_user.id)
     stadium_id = db.create_stadium(user["id"], data)
     for i, file_id in enumerate(data.get("photos", [])):
@@ -201,15 +231,18 @@ async def confirm_submit(call: CallbackQuery, state: FSMContext, bot: Bot):
     await call.message.edit_text("⏳ Stadioningiz admin tasdig'ini kutmoqda. Rahmat!")
     await call.message.answer("Bosh menyu:", reply_markup=kb.main_menu())
 
-    # Adminlarga xabar yuborish
+    # Adminlarga to'liq kartochka (rasm + ma'lumot + tasdiqlash tugmalari) yuboriladi
+    from handlers.admin import send_review_card
+
+    s = db.get_stadium(stadium_id)
+    warning = (
+        "⚠️ <b>DIQQAT: FOYDALANUVCHI OGOHLANTIRISHGA QARAMAY YUBORDI</b>\n"
+        "Bu manzilda avvaldan boshqa stadion bo'lishi mumkin — tekshirib ko'ring!"
+        if duplicate_warning
+        else ""
+    )
     for admin_id in ADMIN_IDS:
         try:
-            await bot.send_message(
-                admin_id,
-                f"🆕 Yangi stadion tasdiqlash uchun yuborildi:\n"
-                f"🏟 {data.get('name')}\n📍 {data.get('region')}, {data.get('district')}\n"
-                f"arizangiz adminga yuborildi. Tasdiqlangandan so'ng, stadion foydalanuvchilarga ko'rinadi. \n\n",
-                f"Admin: @ace_programmer\n",
-            )
+            await send_review_card(bot, admin_id, s, extra_warning=warning)
         except Exception:
             pass

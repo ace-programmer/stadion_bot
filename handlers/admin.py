@@ -7,31 +7,58 @@ import asyncio
 import database as db
 import keyboards as kb
 from config import ADMIN_IDS
-from states import BroadcastState
+from states import BroadcastState, RejectReason, AdminSearch
 
 router = Router()
+
+STATUS_LABELS = {
+    "pending": "⏳ Kutilmoqda",
+    "approved": "✅ Tasdiqlangan",
+    "rejected": "❌ Rad etilgan",
+}
 
 
 def is_admin(telegram_id: int) -> bool:
     return telegram_id in ADMIN_IDS
 
 
+# ---------------- ASOSIY ADMIN PANEL ----------------
+
 @router.message(Command("admin"))
-async def admin_panel(message: Message):
+async def admin_panel(message: Message, state: FSMContext):
+    await state.clear()
     if not is_admin(message.from_user.id):
         await message.answer("⛔️ Sizda admin huquqi yo'q.")
         return
-    pending = db.get_pending_stadiums()
-    if not pending:
-        await message.answer("✅ Tasdiqlash kutayotgan stadionlar yo'q.")
-        return
-    await message.answer(f"🔐 Admin panel — {len(pending)} ta yangi stadion:")
-    for s in pending:
-        await send_review_card(message.bot, message.chat.id, s)
+    pending_count = db.count_stadiums_by_status("pending")
+    await message.answer(
+        "🔐 <b>Admin panel</b>\n\nQuyidagilardan birini tanlang:",
+        reply_markup=kb.admin_main_menu(pending_count),
+    )
 
+
+async def show_admin_menu(target, pending_count=None):
+    if pending_count is None:
+        pending_count = db.count_stadiums_by_status("pending")
+    await target.answer(
+        "🔐 <b>Admin panel</b>\n\nQuyidagilardan birini tanlang:",
+        reply_markup=kb.admin_main_menu(pending_count),
+    )
+
+
+@router.callback_query(F.data == "adm_menu")
+async def back_to_menu(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔️ Ruxsat yo'q", show_alert=True)
+        return
+    await state.clear()
+    await call.answer()
+    await show_admin_menu(call.message)
+
+
+# ---------------- YANGI ARIZALAR (PENDING) ----------------
 
 def build_review_content(s):
-    owner_row = None
     cur = db._conn.cursor()
     cur.execute("SELECT * FROM users WHERE id=?", (s["owner_id"],))
     owner_row = cur.fetchone()
@@ -52,14 +79,30 @@ def build_review_content(s):
     return text, photos
 
 
-async def send_review_card(bot: Bot, chat_id: int, s):
+async def send_review_card(bot: Bot, chat_id: int, s, extra_warning: str = ""):
     text, photos = build_review_content(s)
+    if extra_warning:
+        text = extra_warning + "\n\n" + text
+    reply_kb = kb.admin_review_kb(s["id"], s["latitude"], s["longitude"])
     if photos:
-        await bot.send_photo(
-            chat_id, photos[0]["file_id"], caption=text, reply_markup=kb.admin_review_kb(s["id"])
-        )
+        await bot.send_photo(chat_id, photos[0]["file_id"], caption=text, reply_markup=reply_kb)
     else:
-        await bot.send_message(chat_id, text, reply_markup=kb.admin_review_kb(s["id"]))
+        await bot.send_message(chat_id, text, reply_markup=reply_kb)
+
+
+@router.callback_query(F.data == "adm_pending")
+async def adm_pending(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔️ Ruxsat yo'q", show_alert=True)
+        return
+    await call.answer()
+    pending = db.get_pending_stadiums()
+    if not pending:
+        await call.message.answer("✅ Tasdiqlash kutayotgan stadionlar yo'q.")
+        return
+    await call.message.answer(f"📋 {len(pending)} ta yangi ariza:")
+    for s in pending:
+        await send_review_card(call.bot, call.message.chat.id, s)
 
 
 @router.callback_query(F.data.startswith("admapprove:"))
@@ -70,7 +113,10 @@ async def approve_stadium(call: CallbackQuery, bot: Bot):
     stadium_id = int(call.data.split(":")[1])
     db.set_stadium_status(stadium_id, "approved")
     await call.answer("✅ Tasdiqlandi")
-    await call.message.edit_caption(caption=(call.message.caption or "") + "\n\n✅ TASDIQLANDI") if call.message.caption else await call.message.edit_text((call.message.text or "") + "\n\n✅ TASDIQLANDI")
+    if call.message.caption:
+        await call.message.edit_caption(caption=call.message.caption + "\n\n✅ TASDIQLANDI")
+    else:
+        await call.message.edit_text((call.message.text or "") + "\n\n✅ TASDIQLANDI")
 
     s = db.get_stadium(stadium_id)
     cur = db._conn.cursor()
@@ -78,47 +124,74 @@ async def approve_stadium(call: CallbackQuery, bot: Bot):
     owner = cur.fetchone()
     if owner:
         try:
-            await bot.send_message(owner["telegram_id"], f"✅ Sizning «{s['name']}» stadioningiz tasdiqlandi va endi foydalanuvchilarga ko'rinadi!")
+            await bot.send_message(
+                owner["telegram_id"],
+                f"✅ Sizning «{s['name']}» stadioningiz tasdiqlandi va endi foydalanuvchilarga ko'rinadi!",
+            )
         except Exception:
             pass
 
 
 @router.callback_query(F.data.startswith("admreject:"))
-async def reject_stadium(call: CallbackQuery, bot: Bot):
+async def reject_ask_reason(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         await call.answer("⛔️ Ruxsat yo'q", show_alert=True)
         return
     stadium_id = int(call.data.split(":")[1])
+    await call.answer()
+    await state.set_state(RejectReason.waiting_reason)
+    await state.update_data(stadium_id=stadium_id)
+    await call.message.answer(
+        "❌ Rad etish sababini yozing (bu sabab stadion egasiga yuboriladi):\n\n"
+        "Bekor qilish uchun /bekor yozing."
+    )
+
+
+@router.message(RejectReason.waiting_reason, Command("bekor"))
+async def reject_cancel(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Bekor qilindi.")
+
+
+@router.message(RejectReason.waiting_reason)
+async def reject_with_reason(message: Message, state: FSMContext, bot: Bot):
+    if not is_admin(message.from_user.id):
+        return
+    data = await state.get_data()
+    stadium_id = data["stadium_id"]
+    reason = message.text.strip() if message.text else "Sabab ko'rsatilmagan"
+    await state.clear()
+
     db.set_stadium_status(stadium_id, "rejected")
-    await call.answer("❌ Rad etildi")
-    await call.message.edit_caption(caption=(call.message.caption or "") + "\n\n❌ RAD ETILDI") if call.message.caption else await call.message.edit_text((call.message.text or "") + "\n\n❌ RAD ETILDI")
+    db.set_stadium_reject_reason(stadium_id, reason)
 
     s = db.get_stadium(stadium_id)
+    await message.answer(f"❌ «{s['name']}» rad etildi. Sabab egasiga yuborildi.")
+
     cur = db._conn.cursor()
     cur.execute("SELECT * FROM users WHERE id=?", (s["owner_id"],))
     owner = cur.fetchone()
     if owner:
         try:
-            await bot.send_message(owner["telegram_id"], f"❌ Sizning «{s['name']}» stadioningiz rad etildi. Ma'lumotlarni tekshirib qayta yuborishingiz mumkin.")
+            await bot.send_message(
+                owner["telegram_id"],
+                f"❌ Sizning «{s['name']}» stadioningiz rad etildi.\n\n"
+                f"📝 Sabab: {reason}\n\n"
+                "Ma'lumotlarni tuzatib qayta yuborishingiz mumkin.",
+            )
         except Exception:
             pass
 
 
-# ---------------- BARCHA STADIONLARNI KO'RISH / O'CHIRISH ----------------
+# ---------------- BARCHA STADIONLAR / KO'RISH / O'CHIRISH ----------------
 
-STATUS_LABELS = {
-    "pending": "⏳ Kutilmoqda",
-    "approved": "✅ Tasdiqlangan",
-    "rejected": "❌ Rad etilgan",
-}
-
-
-@router.message(Command("stadionlar"))
-async def admin_all_stadiums(message: Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔️ Sizda admin huquqi yo'q.")
+@router.callback_query(F.data == "adm_allstadiums")
+async def adm_all_stadiums(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔️ Ruxsat yo'q", show_alert=True)
         return
-    await message.answer(
+    await call.answer()
+    await call.message.answer(
         "📋 Qaysi statusdagi stadionlarni ko'rmoqchisiz?", reply_markup=kb.admin_status_kb()
     )
 
@@ -153,12 +226,13 @@ async def admin_view_stadium(call: CallbackQuery):
         return
     text, photos = build_review_content(s)
     text += f"\n\nStatus: {STATUS_LABELS.get(s['status'], s['status'])}"
+    if s["status"] == "rejected" and s["reject_reason"]:
+        text += f"\n📝 Rad etish sababi: {s['reject_reason']}"
+    reply_kb = kb.admin_stadium_info_kb(stadium_id, s["latitude"], s["longitude"])
     if photos:
-        await call.message.answer_photo(
-            photos[0]["file_id"], caption=text, reply_markup=kb.admin_stadium_info_kb(stadium_id)
-        )
+        await call.message.answer_photo(photos[0]["file_id"], caption=text, reply_markup=reply_kb)
     else:
-        await call.message.answer(text, reply_markup=kb.admin_stadium_info_kb(stadium_id))
+        await call.message.answer(text, reply_markup=reply_kb)
 
 
 @router.callback_query(F.data.startswith("admdelask:"))
@@ -211,22 +285,85 @@ async def admin_delete_cancel(call: CallbackQuery):
     await call.message.edit_text("Bekor qilindi.")
 
 
+# ---------------- ADMIN QIDIRUV ----------------
+
+@router.callback_query(F.data == "adm_search")
+async def adm_search_ask(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔️ Ruxsat yo'q", show_alert=True)
+        return
+    await call.answer()
+    await state.set_state(AdminSearch.waiting_query)
+    await call.message.answer("🔎 Stadion nomi, manzili yoki telefon raqamini kiriting:")
+
+
+@router.message(AdminSearch.waiting_query)
+async def adm_search_result(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.clear()
+    results = db.search_all_stadiums_admin(message.text.strip())
+    if not results:
+        await message.answer("❌ Hech narsa topilmadi.")
+        return
+    await message.answer(
+        f"🔍 {len(results)} ta natija:", reply_markup=kb.stadium_list_kb(results[:15], prefix="admview")
+    )
+
+
+# ---------------- STATISTIKA ----------------
+
+@router.callback_query(F.data == "adm_stats")
+async def adm_stats(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔️ Ruxsat yo'q", show_alert=True)
+        return
+    await call.answer()
+    users_count = db.count_users()
+    total = db.count_all_stadiums()
+    pending = db.count_stadiums_by_status("pending")
+    approved = db.count_stadiums_by_status("approved")
+    rejected = db.count_stadiums_by_status("rejected")
+    await call.message.answer(
+        "📊 <b>Statistika</b>\n\n"
+        f"👤 Jami foydalanuvchilar: {users_count}\n"
+        f"🏟 Jami stadionlar: {total}\n"
+        f"⏳ Kutilmoqda: {pending}\n"
+        f"✅ Tasdiqlangan: {approved}\n"
+        f"❌ Rad etilgan: {rejected}"
+    )
+
+
 # ---------------- OMMAVIY XABAR (REKLAMA) ----------------
 
-@router.message(Command("xabar"))
-async def broadcast_start(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔️ Sizda admin huquqi yo'q.")
-        return
-    await state.set_state(BroadcastState.waiting_content)
+async def _broadcast_intro(target):
     users_count = len(db.get_all_users())
-    await message.answer(
+    await target.answer(
         f"📢 Barcha foydalanuvchilarga ({users_count} ta) yubormoqchi bo'lgan xabaringizni "
         "yuboring.\n\n"
         "Matn, rasm (izoh bilan), video — istalgan turda bo'lishi mumkin. "
         "Xabar aynan qanday ko'rinishda yuborsangiz, foydalanuvchilarga ham shunday ko'rinadi.\n\n"
         "Bekor qilish uchun /bekor yozing."
     )
+
+
+@router.message(Command("xabar"))
+async def broadcast_start_cmd(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔️ Sizda admin huquqi yo'q.")
+        return
+    await state.set_state(BroadcastState.waiting_content)
+    await _broadcast_intro(message)
+
+
+@router.callback_query(F.data == "adm_broadcast")
+async def broadcast_start_cb(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔️ Ruxsat yo'q", show_alert=True)
+        return
+    await call.answer()
+    await state.set_state(BroadcastState.waiting_content)
+    await _broadcast_intro(call.message)
 
 
 @router.message(BroadcastState.waiting_content, Command("bekor"))
@@ -269,7 +406,7 @@ async def broadcast_send(call: CallbackQuery, state: FSMContext, bot: Bot):
             success += 1
         except Exception:
             failed += 1
-        await asyncio.sleep(0.05)  # Telegram flood-limitiga tushmaslik uchun
+        await asyncio.sleep(0.05)
 
     await call.message.answer(
         f"✅ Xabar yuborildi: {success} ta foydalanuvchiga\n"

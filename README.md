@@ -65,12 +65,32 @@ Eski bazadan foydalansangiz ham, `region`/`district` ustunlari avtomatik qo'shil
   → manzil → lokatsiya (xaritadan tanlab yuborish, yoki keyinroq qo'shish uchun
   «⏭ O'tkazib yuborish») → telefon → narx → rasmlar → tekshirish → yuborish →
   admin tasdig'ini kutish
+  - **Dublikat lokatsiya tekshiruvi**: agar bergan koordinata boshqa (tasdiqlangan yoki
+    kutilayotgan) stadionnikiga juda yaqin bo'lsa (~50 metr), foydalanuvchiga ogohlantirish
+    chiqadi. U «Baribir yuborish»ni tanlashi mumkin, lekin bu holda admin kartasida
+    **maxsus DIQQAT belgisi** chiqadi
 - **👤 Profil** — shaxsiy ma'lumot (shu jumladan tanlangan hudud), telefon/lokatsiya/hudud
   o'zgartirish, "Mening stadionlarim"
   - Har bir stadion uchun: ma'lumotlar, tahrirlash, rasmlar (qo'shish/o'chirish),
     vaqtlarni boshqarish (sana tanlab, soatlarni 🟢/🔴 qilib bosish orqali band/bo'sh qilish)
-- **🔐 Admin panel** (`/admin` buyrug'i, faqat `ADMIN_IDS` ro'yxatidagilar uchun) —
-  yangi stadionlarni ko'rish, ✅ tasdiqlash / ❌ rad etish, egasiga avtomatik xabar boradi
+
+### 🔐 Admin panel (`/admin`, faqat `ADMIN_IDS` ro'yxatidagilar uchun)
+
+Endi to'liq, tugmalar orqali boshqariladigan **yagona panel**:
+
+- **📋 Yangi arizalar** — yangi qo'shilgan stadionlar, rasm+ma'lumot bilan:
+  - ✅ Tasdiqlash — egasiga xabar boradi
+  - ❌ Rad etish — **admin sababni yozadi**, bu sabab egasiga yuboriladi
+  - 🗺 Xaritada tekshirish — lokatsiya to'g'ri belgilanganini xaritadan tekshirish
+- **🏟 Barcha stadionlar** — statusi bo'yicha (kutilmoqda/tasdiqlangan/rad etilgan)
+  ro'yxatdan istalgan stadionni ko'rish, xaritadan tekshirish va **butunlay o'chirish**
+  (o'chirilganda egasiga xabar boradi)
+- **🔎 Stadion qidirish** — statusidan qat'i nazar, nom/manzil/telefon bo'yicha qidirish
+- **📊 Statistika** — jami foydalanuvchilar, jami/kutilayotgan/tasdiqlangan/rad etilgan
+  stadionlar soni
+- **📢 Ommaviy xabar** — barcha foydalanuvchilarga matn/rasm/video ko'rinishida xabar
+  (reklama) yuborish, oldindan ko'rish va tasdiqlash bilan (`/xabar` buyrug'i orqali ham
+  ishlaydi)
 
 ### 📍 Lokatsiya yuborishda muammo bo'lsa
 

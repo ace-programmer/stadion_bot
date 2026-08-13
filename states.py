@@ -47,3 +47,11 @@ class ManageTimes(StatesGroup):
 class BroadcastState(StatesGroup):
     waiting_content = State()
     confirm = State()
+
+
+class RejectReason(StatesGroup):
+    waiting_reason = State()
+
+
+class AdminSearch(StatesGroup):
+    waiting_query = State()

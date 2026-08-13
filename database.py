@@ -67,6 +67,11 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN region TEXT")
     if "district" not in existing_cols:
         cur.execute("ALTER TABLE users ADD COLUMN district TEXT")
+
+    cur.execute("PRAGMA table_info(stadiums)")
+    stadium_cols = {row["name"] for row in cur.fetchall()}
+    if "reject_reason" not in stadium_cols:
+        cur.execute("ALTER TABLE stadiums ADD COLUMN reject_reason TEXT")
     _conn.commit()
 
 
@@ -184,6 +189,11 @@ def set_stadium_status(stadium_id: int, status: str):
     _conn.commit()
 
 
+def set_stadium_reject_reason(stadium_id: int, reason: str):
+    _conn.execute("UPDATE stadiums SET reject_reason=? WHERE id=?", (reason, stadium_id))
+    _conn.commit()
+
+
 def get_stadiums_by_status(status: str):
     cur = _conn.cursor()
     cur.execute("SELECT * FROM stadiums WHERE status=? ORDER BY created_at DESC", (status,))
@@ -274,6 +284,53 @@ def get_nearest_stadiums(lat, lon, limit=10):
         result.append((dist, s))
     result.sort(key=lambda x: x[0])
     return result[:limit]
+
+
+def find_nearby_stadium(lat, lon, max_km: float = 0.05, exclude_id: int = None):
+    """Berilgan koordinataga juda yaqin (odatda bir xil) stadion bor-yo'qligini tekshiradi.
+    Faqat 'pending' va 'approved' statusdagilar hisobga olinadi (rad etilganlar emas)."""
+    cur = _conn.cursor()
+    cur.execute(
+        "SELECT * FROM stadiums WHERE status IN ('pending','approved') "
+        "AND latitude IS NOT NULL AND longitude IS NOT NULL"
+    )
+    for r in cur.fetchall():
+        if exclude_id and r["id"] == exclude_id:
+            continue
+        if haversine(lat, lon, r["latitude"], r["longitude"]) <= max_km:
+            return r
+    return None
+
+
+# ---------------- ADMIN: QIDIRUV VA STATISTIKA ----------------
+
+def search_all_stadiums_admin(query: str):
+    """Admin uchun - statusidan qat'i nazar barcha stadionlar orasidan qidiradi."""
+    cur = _conn.cursor()
+    like = f"%{query}%"
+    cur.execute(
+        "SELECT * FROM stadiums WHERE name LIKE ? OR address LIKE ? OR phone LIKE ? ORDER BY created_at DESC",
+        (like, like, like),
+    )
+    return cur.fetchall()
+
+
+def count_users() -> int:
+    cur = _conn.cursor()
+    cur.execute("SELECT COUNT(*) as c FROM users")
+    return cur.fetchone()["c"]
+
+
+def count_stadiums_by_status(status: str) -> int:
+    cur = _conn.cursor()
+    cur.execute("SELECT COUNT(*) as c FROM stadiums WHERE status=?", (status,))
+    return cur.fetchone()["c"]
+
+
+def count_all_stadiums() -> int:
+    cur = _conn.cursor()
+    cur.execute("SELECT COUNT(*) as c FROM stadiums")
+    return cur.fetchone()["c"]
 
 
 # ---------------- STADIUM TIMES ----------------

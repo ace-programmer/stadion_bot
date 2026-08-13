@@ -104,6 +104,14 @@ def confirm_kb():
     return kb.as_markup()
 
 
+def duplicate_location_kb():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❗ Baribir yuborish", callback_data="confirm_force_submit")
+    kb.button(text="❌ Bekor qilish", callback_data="confirm_cancel")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 def profile_menu():
     kb = InlineKeyboardBuilder()
     kb.button(text="📱 Telefon qo'shish/o'zgartirish", callback_data="profile_phone")
@@ -182,11 +190,27 @@ def hours_kb(stadium_id: int, date: str, busy_map: dict):
     return kb.as_markup()
 
 
-def admin_review_kb(stadium_id: int):
+def admin_review_kb(stadium_id: int, lat=None, lon=None):
     kb = InlineKeyboardBuilder()
     kb.button(text="✅ Tasdiqlash", callback_data=f"admapprove:{stadium_id}")
     kb.button(text="❌ Rad etish", callback_data=f"admreject:{stadium_id}")
-    kb.adjust(2)
+    if lat and lon:
+        kb.button(text="🗺 Xaritada tekshirish", url=f"https://maps.google.com/?q={lat},{lon}")
+        kb.adjust(2, 1)
+    else:
+        kb.adjust(2)
+    return kb.as_markup()
+
+
+def admin_main_menu(pending_count: int = 0):
+    kb = InlineKeyboardBuilder()
+    label = f"📋 Yangi arizalar ({pending_count})" if pending_count else "📋 Yangi arizalar"
+    kb.button(text=label, callback_data="adm_pending")
+    kb.button(text="🏟 Barcha stadionlar", callback_data="adm_allstadiums")
+    kb.button(text="🔎 Stadion qidirish", callback_data="adm_search")
+    kb.button(text="📊 Statistika", callback_data="adm_stats")
+    kb.button(text="📢 Ommaviy xabar", callback_data="adm_broadcast")
+    kb.adjust(1)
     return kb.as_markup()
 
 
@@ -199,9 +223,12 @@ def admin_status_kb():
     return kb.as_markup()
 
 
-def admin_stadium_info_kb(stadium_id: int):
+def admin_stadium_info_kb(stadium_id: int, lat=None, lon=None):
     kb = InlineKeyboardBuilder()
+    if lat and lon:
+        kb.button(text="🗺 Xaritada tekshirish", url=f"https://maps.google.com/?q={lat},{lon}")
     kb.button(text="🗑 O'chirish", callback_data=f"admdelask:{stadium_id}")
+    kb.adjust(1)
     return kb.as_markup()
 
 
