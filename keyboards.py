@@ -5,7 +5,10 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
+from datetime import datetime, timedelta
 from config import REGIONS, DISTRICTS, DAY_HOURS
+
+UZ_MONTHS_SHORT = ["Yan", "Fev", "Mar", "Apr", "May", "Iyun", "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"]
 
 
 def main_menu():
@@ -180,6 +183,23 @@ def times_menu_kb(stadium_id: int):
     return kb.as_markup()
 
 
+def dates_inline(stadium_id: int, days: int = 14):
+    kb = InlineKeyboardBuilder()
+    today = datetime.now()
+    for i in range(days):
+        d = today + timedelta(days=i)
+        if i == 0:
+            label = "Bugun"
+        elif i == 1:
+            label = "Ertaga"
+        else:
+            label = f"{d.day}-{UZ_MONTHS_SHORT[d.month - 1]}"
+        date_str = d.strftime("%d.%m.%Y")
+        kb.button(text=label, callback_data=f"pickdate2:{stadium_id}:{date_str}")
+    kb.adjust(4)
+    return kb.as_markup()
+
+
 def hours_kb(stadium_id: int, date: str, busy_map: dict):
     kb = InlineKeyboardBuilder()
     for t in DAY_HOURS:
@@ -187,6 +207,7 @@ def hours_kb(stadium_id: int, date: str, busy_map: dict):
         icon = "🔴" if busy else "🟢"
         kb.button(text=f"{icon} {t}", callback_data=f"toggletime:{stadium_id}:{date}:{t}")
     kb.adjust(4)
+    kb.row(InlineKeyboardButton(text="📅 Boshqa sana", callback_data=f"pickdate:{stadium_id}"))
     return kb.as_markup()
 
 

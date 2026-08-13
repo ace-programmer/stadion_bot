@@ -213,46 +213,41 @@ async def times_menu(call: CallbackQuery):
 @router.callback_query(F.data.startswith("pickdate:"))
 async def ask_date(call: CallbackQuery, state: FSMContext):
     stadium_id = int(call.data.split(":")[1])
+    await state.clear()
     await call.answer()
-    await state.set_state(ManageTimes.waiting_date)
-    await state.update_data(stadium_id=stadium_id)
-    await call.message.answer(
-        "📅 Sanani kiriting (masalan: 15.08.2026):", reply_markup=kb.cancel_kb()
-    )
+    text = "📅 Sanani tanlang:"
+    reply_kb = kb.dates_inline(stadium_id)
+    if call.message.text and "sanasi uchun vaqtlar" in call.message.text:
+        await call.message.edit_text(text, reply_markup=reply_kb)
+    else:
+        await call.message.answer(text, reply_markup=reply_kb)
 
 
-@router.message(ManageTimes.waiting_date)
-async def show_hours(message: Message, state: FSMContext):
-    if message.text.strip() == "❌ Bekor qilish":
-        await state.clear()
-        await message.answer("Bekor qilindi.", reply_markup=kb.main_menu())
-        return
-    try:
-        d = datetime.strptime(message.text.strip(), "%d.%m.%Y")
-    except ValueError:
-        await message.answer("❗️ Sana formati noto'g'ri. Masalan: 15.08.2026")
-        return
-    date_str = d.strftime("%d.%m.%Y")
-    data = await state.get_data()
-    stadium_id = data["stadium_id"]
-    await state.update_data(date=date_str)
+@router.callback_query(F.data.startswith("pickdate2:"))
+async def show_hours(call: CallbackQuery):
+    _, stadium_id, date_str = call.data.split(":")
+    stadium_id = int(stadium_id)
+    await call.answer()
 
     times = db.get_times_for_date(stadium_id, date_str)
     busy_map = {t["time"]: t["is_busy"] for t in times}
-    await message.answer(
-        f"📋 {date_str} sanasi uchun vaqtlar (🟢 bo'sh / 🔴 band). Bosing — holati o'zgaradi:",
-        reply_markup=kb.hours_kb(stadium_id, date_str, busy_map),
-    )
-    await message.answer("Bosh menyu:", reply_markup=kb.main_menu())
-    await state.clear()
+    text = f"📋 {date_str} sanasi uchun vaqtlar (🟢 bo'sh / 🔴 band). Bosing — holati o'zgaradi:"
+    reply_kb = kb.hours_kb(stadium_id, date_str, busy_map)
+    if call.message.text and ("sanani tanlang" in call.message.text.lower() or "sanasi uchun vaqtlar" in call.message.text):
+        await call.message.edit_text(text, reply_markup=reply_kb)
+    else:
+        await call.message.answer(text, reply_markup=reply_kb)
 
 
 @router.callback_query(F.data.startswith("toggletime:"))
 async def toggle_time(call: CallbackQuery):
-    _, stadium_id, date_str, time_str = call.data.split(":")
+    # maxsplit=3 MUHIM: vaqt qiymati ("09:00") o'zi tarkibida ":" bor,
+    # oddiy split(":") bilan bo'lsa noto'g'ri bo'linib, saqlanmay qolar edi.
+    _, stadium_id, date_str, time_str = call.data.split(":", 3)
     stadium_id = int(stadium_id)
     db.toggle_time_slot(stadium_id, date_str, time_str)
     times = db.get_times_for_date(stadium_id, date_str)
     busy_map = {t["time"]: t["is_busy"] for t in times}
-    await call.answer()
+    new_state = busy_map.get(time_str, 0)
+    await call.answer("🔴 Band qilindi" if new_state else "🟢 Bo'shatildi")
     await call.message.edit_reply_markup(reply_markup=kb.hours_kb(stadium_id, date_str, busy_map))

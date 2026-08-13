@@ -85,7 +85,20 @@ async def cancel_or_skip_location(message: Message, state: FSMContext):
 @router.callback_query(F.data == "my_stadiums")
 async def my_stadiums(call: CallbackQuery, state: FSMContext):
     await call.answer()
-    await call.message.answer("🏟 Qaysi statusdagi stadionlarni ko'rmoqchisiz?", reply_markup=kb.my_stadiums_status_kb())
+    user = db.get_user_by_tg(call.from_user.id)
+    stadiums = db.get_user_stadiums(user["id"], "approved")
+    if not stadiums:
+        await call.message.answer(
+            "✅ Tasdiqlangan stadioningiz hozircha yo'q.\n\n"
+            "Agar yaqinda stadion qo'shgan bo'lsangiz, admin tasdiqlashini kuting — "
+            "tasdiqlangach shu yerda ko'rinadi. Yangi stadion qo'shish uchun "
+            "«➕ Stadion qo'shish» tugmasidan foydalaning."
+        )
+        return
+    await call.message.answer(
+        f"🏟 Sizning tasdiqlangan stadionlaringiz ({len(stadiums)} ta):",
+        reply_markup=kb.stadium_list_kb(stadiums),
+    )
 
 
 @router.callback_query(F.data == "profile_district")
