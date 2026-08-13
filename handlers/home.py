@@ -125,3 +125,34 @@ async def show_phone(call: CallbackQuery):
 @router.callback_query(F.data == "noop")
 async def noop(call: CallbackQuery):
     await call.answer()
+
+
+@router.callback_query(F.data.startswith("pubtimes:"))
+async def public_times_dates(call: CallbackQuery):
+    stadium_id = int(call.data.split(":")[1])
+    await call.answer()
+    # Kartochka rasm bo'lishi mumkin, shuning uchun har doim yangi xabar yuboramiz
+    await call.message.answer(
+        "📅 Qaysi sana uchun bo'sh vaqtlarni ko'rmoqchisiz?",
+        reply_markup=kb.dates_inline(stadium_id, prefix="pubdate"),
+    )
+
+
+@router.callback_query(F.data.startswith("pubdate:"))
+async def public_times_hours(call: CallbackQuery):
+    _, stadium_id, date_str = call.data.split(":")
+    stadium_id = int(stadium_id)
+    await call.answer()
+
+    s = db.get_stadium(stadium_id)
+    times = db.get_times_for_date(stadium_id, date_str)
+    busy_map = {t["time"]: t["is_busy"] for t in times}
+    text = (
+        f"📋 <b>{s['name']}</b> — {date_str}\n"
+        "🟢 Bo'sh / 🔴 Band\n\n"
+        f"❗️ Bu yerdan bron qilib bo'lmaydi. Band qilish uchun stadion egasiga "
+        f"qo'ng'iroq qiling: 📞 {s['phone']}"
+    )
+    reply_kb = kb.hours_kb_readonly(stadium_id, date_str, busy_map)
+    # Bu xabar har doim oldingi "sana tanlang" (matnli) xabarni tahrirlaydi
+    await call.message.edit_text(text, reply_markup=reply_kb)

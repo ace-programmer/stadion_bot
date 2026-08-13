@@ -76,9 +76,12 @@ def districts_inline(region: str, prefix="district"):
 def stadium_card_kb(stadium_id: int, phone: str, lat, lon):
     kb = InlineKeyboardBuilder()
     kb.button(text="📞 Bog'lanish", callback_data=f"call:{stadium_id}")
+    kb.button(text="🕐 Bo'sh vaqtlar", callback_data=f"pubtimes:{stadium_id}")
     if lat and lon:
         kb.button(text="🗺 Manzilni ochish", url=f"https://maps.google.com/?q={lat},{lon}")
-    kb.adjust(2)
+        kb.adjust(2, 1)
+    else:
+        kb.adjust(2)
     return kb.as_markup()
 
 
@@ -183,7 +186,7 @@ def times_menu_kb(stadium_id: int):
     return kb.as_markup()
 
 
-def dates_inline(stadium_id: int, days: int = 14):
+def dates_inline(stadium_id: int, days: int = 14, prefix: str = "pickdate2"):
     kb = InlineKeyboardBuilder()
     today = datetime.now()
     for i in range(days):
@@ -195,7 +198,7 @@ def dates_inline(stadium_id: int, days: int = 14):
         else:
             label = f"{d.day}-{UZ_MONTHS_SHORT[d.month - 1]}"
         date_str = d.strftime("%d.%m.%Y")
-        kb.button(text=label, callback_data=f"pickdate2:{stadium_id}:{date_str}")
+        kb.button(text=label, callback_data=f"{prefix}:{stadium_id}:{date_str}")
     kb.adjust(4)
     return kb.as_markup()
 
@@ -208,6 +211,18 @@ def hours_kb(stadium_id: int, date: str, busy_map: dict):
         kb.button(text=f"{icon} {t}", callback_data=f"toggletime:{stadium_id}:{date}:{t}")
     kb.adjust(4)
     kb.row(InlineKeyboardButton(text="📅 Boshqa sana", callback_data=f"pickdate:{stadium_id}"))
+    return kb.as_markup()
+
+
+def hours_kb_readonly(stadium_id: int, date: str, busy_map: dict):
+    """Oddiy foydalanuvchilar uchun - faqat ko'rish, bosib o'zgartira olmaydi."""
+    kb = InlineKeyboardBuilder()
+    for t in DAY_HOURS:
+        busy = busy_map.get(t, 0)
+        icon = "🔴" if busy else "🟢"
+        kb.button(text=f"{icon} {t}", callback_data="noop")
+    kb.adjust(4)
+    kb.row(InlineKeyboardButton(text="📅 Boshqa sana", callback_data=f"pubtimes:{stadium_id}"))
     return kb.as_markup()
 
 
