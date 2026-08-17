@@ -35,5 +35,5 @@ async def process_location(message: Message, state: FSMContext):
 
     await message.answer(f"📍 Sizga eng yaqin {len(nearest)} ta stadion:")
     for dist, s in nearest:
-        await send_stadium_card(message, s)
+        await send_stadium_card(message, s, message.from_user.id)
         await message.answer(f"📏 Masofa: {dist:.1f} km")

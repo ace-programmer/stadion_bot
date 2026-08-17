@@ -57,6 +57,19 @@ def init_db():
             FOREIGN KEY (stadium_id) REFERENCES stadiums(id) ON DELETE CASCADE,
             UNIQUE(stadium_id, date, time)
         );
+
+        CREATE TABLE IF NOT EXISTS favorites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER NOT NULL,
+            stadium_id INTEGER NOT NULL,
+            created_at TEXT,
+            UNIQUE(telegram_id, stadium_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
         """
     )
     _conn.commit()
@@ -72,6 +85,8 @@ def init_db():
     stadium_cols = {row["name"] for row in cur.fetchall()}
     if "reject_reason" not in stadium_cols:
         cur.execute("ALTER TABLE stadiums ADD COLUMN reject_reason TEXT")
+    if "reminder_sent" not in stadium_cols:
+        cur.execute("ALTER TABLE stadiums ADD COLUMN reminder_sent INTEGER DEFAULT 0")
     _conn.commit()
 
 
@@ -331,6 +346,90 @@ def count_all_stadiums() -> int:
     cur = _conn.cursor()
     cur.execute("SELECT COUNT(*) as c FROM stadiums")
     return cur.fetchone()["c"]
+
+
+# ---------------- JADVAL ESLATMASI (egaga) ----------------
+
+def get_approved_stadiums_needing_reminder():
+    """Tasdiqlangan, hali hech qanday vaqt jadvali kiritilmagan va eslatma
+    yuborilmagan stadionlar ro'yxati."""
+    cur = _conn.cursor()
+    cur.execute(
+        """
+        SELECT s.* FROM stadiums s
+        WHERE s.status='approved' AND s.reminder_sent=0
+        AND NOT EXISTS (SELECT 1 FROM stadium_times t WHERE t.stadium_id = s.id)
+        """
+    )
+    return cur.fetchall()
+
+
+def mark_reminder_sent(stadium_id: int):
+    _conn.execute("UPDATE stadiums SET reminder_sent=1 WHERE id=?", (stadium_id,))
+    _conn.commit()
+
+
+# ---------------- SEVIMLI STADIONLAR ----------------
+
+def toggle_favorite(telegram_id: int, stadium_id: int) -> bool:
+    """Qo'shadi yoki olib tashlaydi. Natija: True = endi sevimlida, False = olib tashlandi."""
+    cur = _conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM favorites WHERE telegram_id=? AND stadium_id=?", (telegram_id, stadium_id)
+    )
+    if cur.fetchone():
+        _conn.execute(
+            "DELETE FROM favorites WHERE telegram_id=? AND stadium_id=?",
+            (telegram_id, stadium_id),
+        )
+        _conn.commit()
+        return False
+    _conn.execute(
+        "INSERT INTO favorites (telegram_id, stadium_id, created_at) VALUES (?,?,?)",
+        (telegram_id, stadium_id, datetime.now().isoformat()),
+    )
+    _conn.commit()
+    return True
+
+
+def is_favorite(telegram_id: int, stadium_id: int) -> bool:
+    cur = _conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM favorites WHERE telegram_id=? AND stadium_id=?", (telegram_id, stadium_id)
+    )
+    return cur.fetchone() is not None
+
+
+def get_user_favorite_stadiums(telegram_id: int):
+    cur = _conn.cursor()
+    cur.execute(
+        """
+        SELECT s.* FROM stadiums s
+        JOIN favorites f ON f.stadium_id = s.id
+        WHERE f.telegram_id=? AND s.status='approved'
+        ORDER BY f.created_at DESC
+        """,
+        (telegram_id,),
+    )
+    return cur.fetchall()
+
+
+# ---------------- SOZLAMALAR (backup vaqti va h.k.) ----------------
+
+def get_setting(key: str):
+    cur = _conn.cursor()
+    cur.execute("SELECT value FROM settings WHERE key=?", (key,))
+    row = cur.fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(key: str, value: str):
+    _conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value),
+    )
+    _conn.commit()
 
 
 # ---------------- STADIUM TIMES ----------------

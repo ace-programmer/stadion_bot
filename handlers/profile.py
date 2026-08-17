@@ -107,3 +107,19 @@ async def change_profile_district(call: CallbackQuery, state: FSMContext):
     from handlers.district import start_district_select
 
     await start_district_select(call, state, purpose="profile")
+
+
+@router.callback_query(F.data == "profile_favorites")
+async def show_favorites(call: CallbackQuery):
+    await call.answer()
+    favs = db.get_user_favorite_stadiums(call.from_user.id)
+    if not favs:
+        await call.message.answer(
+            "❤️ Sevimlilar ro'yxati hozircha bo'sh.\n\n"
+            "Istalgan stadion kartochkasida «🤍 Sevimlilarga» tugmasini bosib qo'shishingiz mumkin."
+        )
+        return
+    await call.message.answer(
+        f"❤️ Sevimli stadionlaringiz ({len(favs)} ta):",
+        reply_markup=kb.stadium_list_kb(favs, prefix="viewstadium"),
+    )

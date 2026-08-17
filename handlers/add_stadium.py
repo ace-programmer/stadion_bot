@@ -142,30 +142,16 @@ async def get_price(message: Message, state: FSMContext):
     await state.update_data(price=int(text), photos=[])
     await state.set_state(AddStadium.photos)
     await message.answer(
-        "8️⃣ Stadion rasmlarini yuboring (1 tadan 5 tagacha). "
-        "Tugatgach «✅ Tayyor» tugmasini bosing:",
-        reply_markup=kb.add_stadium_photos_kb(),
+        "8️⃣ Stadion rasmini yuboring.\n\n"
+        "❗️ <b>1 ta aniq va sifatli rasm majburiy</b> (xotira tejash uchun faqat "
+        "bitta rasm qabul qilinadi):",
+        reply_markup=kb.cancel_kb(),
     )
 
 
 @router.message(AddStadium.photos, F.photo)
 async def get_photo(message: Message, state: FSMContext):
-    data = await state.get_data()
-    photos = data.get("photos", [])
-    if len(photos) >= 5:
-        await message.answer("❗️ Maksimal 5 ta rasm yuklashingiz mumkin. «✅ Tayyor» tugmasini bosing.")
-        return
-    photos.append(message.photo[-1].file_id)
-    await state.update_data(photos=photos)
-    await message.answer(
-        f"✅ {len(photos)}-rasm qabul qilindi. Yana yuborishingiz mumkin yoki «✅ Tayyor»ni bosing.",
-        reply_markup=kb.add_stadium_photos_kb(),
-    )
-
-
-@router.callback_query(AddStadium.photos, F.data == "photos_done")
-async def photos_done(call: CallbackQuery, state: FSMContext):
-    await call.answer()
+    await state.update_data(photos=[message.photo[-1].file_id])
     data = await state.get_data()
     text = (
         "9️⃣ Ma'lumotlarni tekshiring:\n\n"
@@ -175,10 +161,20 @@ async def photos_done(call: CallbackQuery, state: FSMContext):
         f"🏠 Manzil: {data.get('address')}\n"
         f"📞 Telefon: {data.get('phone')}\n"
         f"💰 Narx: {data.get('price'):,} so'm\n"
-        f"📸 Rasmlar: {len(data.get('photos', []))} ta"
+        f"📸 Rasm: ✅ qabul qilindi"
     )
     await state.set_state(AddStadium.confirm)
-    await call.message.answer(text, reply_markup=kb.confirm_kb())
+    await message.answer("✅ Rasm qabul qilindi.", reply_markup=kb.main_menu())
+    await message.answer(text, reply_markup=kb.confirm_kb())
+
+
+@router.message(AddStadium.photos)
+async def get_photo_invalid(message: Message, state: FSMContext):
+    if message.text and message.text.strip() == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=kb.main_menu())
+        return
+    await message.answer("❗️ Iltimos, rasm (📷) yuboring — matn emas.")
 
 
 @router.callback_query(AddStadium.confirm, F.data == "confirm_cancel")

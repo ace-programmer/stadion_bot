@@ -8,6 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 import database as db
+from scheduler import reminder_scheduler, backup_scheduler
 
 from handlers import start, home, nearest, add_stadium, profile, my_stadiums, admin, district
 
@@ -33,6 +34,11 @@ async def main():
     dp.include_router(my_stadiums.router)
 
     await bot.delete_webhook(drop_pending_updates=True)
+
+    # Fon vazifalari: jadval eslatmasi va haftalik zaxira nusxa
+    asyncio.create_task(reminder_scheduler(bot))
+    asyncio.create_task(backup_scheduler(bot))
+
     await dp.start_polling(bot)
 
 

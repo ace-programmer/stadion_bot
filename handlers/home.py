@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InputMediaPhoto
 from aiogram.fsm.context import FSMContext
+from datetime import datetime
 
 import database as db
 import keyboards as kb
@@ -20,11 +21,12 @@ def stadium_caption(s):
     )
 
 
-async def send_stadium_card(message: Message, stadium):
+async def send_stadium_card(message: Message, stadium, user_tg_id: int):
     photos = db.get_stadium_photos(stadium["id"])
     caption = stadium_caption(stadium)
+    is_fav = db.is_favorite(user_tg_id, stadium["id"])
     reply_kb = kb.stadium_card_kb(
-        stadium["id"], stadium["phone"], stadium["latitude"], stadium["longitude"]
+        stadium["id"], stadium["phone"], stadium["latitude"], stadium["longitude"], is_fav
     )
     if photos:
         if len(photos) == 1:
@@ -36,6 +38,21 @@ async def send_stadium_card(message: Message, stadium):
             await message.answer("Amallar:", reply_markup=reply_kb)
     else:
         await message.answer(caption, reply_markup=reply_kb)
+
+
+async def show_today_schedule(message: Message, stadium):
+    """Stadion tanlanganda shu kungi jadvalni avtomatik ko'rsatadi."""
+    date_str = datetime.now().strftime("%d.%m.%Y")
+    times = db.get_times_for_date(stadium["id"], date_str)
+    busy_map = {t["time"]: t["is_busy"] for t in times}
+    text = (
+        f"📋 <b>Bugungi jadval</b> ({date_str})\n"
+        "🟢 Bo'sh / 🔴 Band\n\n"
+        f"❗️ Bron qilish uchun qo'ng'iroq qiling: 📞 {stadium['phone']}"
+    )
+    await message.answer(
+        text, reply_markup=kb.hours_kb_readonly(stadium["id"], date_str, busy_map)
+    )
 
 
 async def show_district_stadiums(message: Message, region: str, district: str):
@@ -81,7 +98,8 @@ async def view_stadium(call: CallbackQuery):
     if not s:
         await call.message.answer("❌ Stadion topilmadi.")
         return
-    await send_stadium_card(call.message, s)
+    await send_stadium_card(call.message, s, call.from_user.id)
+    await show_today_schedule(call.message, s)
 
 
 @router.message(F.text == "🔎 Stadion qidirish")
@@ -110,6 +128,24 @@ async def do_search(message: Message, state: FSMContext):
         "Batafsil ko'rish uchun tanlang:",
         reply_markup=kb.stadium_list_kb(results[:15], prefix="viewstadium"),
     )
+
+
+@router.callback_query(F.data.startswith("favtoggle:"))
+async def favorite_toggle(call: CallbackQuery):
+    stadium_id = int(call.data.split(":")[1])
+    is_now_fav = db.toggle_favorite(call.from_user.id, stadium_id)
+    await call.answer("❤️ Sevimlilarga qo'shildi" if is_now_fav else "🤍 Sevimlilardan olib tashlandi")
+
+    s = db.get_stadium(stadium_id)
+    if not s:
+        return
+    new_kb = kb.stadium_card_kb(
+        stadium_id, s["phone"], s["latitude"], s["longitude"], is_fav=is_now_fav
+    )
+    try:
+        await call.message.edit_reply_markup(reply_markup=new_kb)
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("call:"))

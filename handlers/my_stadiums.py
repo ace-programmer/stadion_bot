@@ -172,8 +172,11 @@ async def add_photo_ask(call: CallbackQuery, state: FSMContext):
     stadium_id = int(call.data.split(":")[1])
     await call.answer()
     photos = db.get_stadium_photos(stadium_id)
-    if len(photos) >= 5:
-        await call.message.answer("❗️ Maksimal 5 ta rasm bo'lishi mumkin.")
+    if len(photos) >= 1:
+        await call.message.answer(
+            "❗️ Bitta stadion uchun faqat 1 ta rasm bo'lishi mumkin (xotira tejash uchun). "
+            "Avval mavjud rasmni o'chirib, keyin yangisini yuklang."
+        )
         return
     await state.set_state(ManagePhotos.waiting_photo)
     await state.update_data(stadium_id=stadium_id)

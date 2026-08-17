@@ -73,15 +73,17 @@ def districts_inline(region: str, prefix="district"):
     return kb.as_markup()
 
 
-def stadium_card_kb(stadium_id: int, phone: str, lat, lon):
+def stadium_card_kb(stadium_id: int, phone: str, lat, lon, is_fav: bool = False):
     kb = InlineKeyboardBuilder()
     kb.button(text="📞 Bog'lanish", callback_data=f"call:{stadium_id}")
+    fav_text = "❤️ Sevimlida" if is_fav else "🤍 Sevimlilarga"
+    kb.button(text=fav_text, callback_data=f"favtoggle:{stadium_id}")
     kb.button(text="🕐 Bo'sh vaqtlar", callback_data=f"pubtimes:{stadium_id}")
     if lat and lon:
         kb.button(text="🗺 Manzilni ochish", url=f"https://maps.google.com/?q={lat},{lon}")
-        kb.adjust(2, 1)
+        kb.adjust(2, 1, 1)
     else:
-        kb.adjust(2)
+        kb.adjust(2, 1)
     return kb.as_markup()
 
 
@@ -123,6 +125,7 @@ def profile_menu():
     kb.button(text="📱 Telefon qo'shish/o'zgartirish", callback_data="profile_phone")
     kb.button(text="📍 Joylashuv qo'shish/o'zgartirish", callback_data="profile_location")
     kb.button(text="🏘 Hududni o'zgartirish", callback_data="profile_district")
+    kb.button(text="❤️ Sevimlilarim", callback_data="profile_favorites")
     kb.button(text="🏟 Mening stadionlarim", callback_data="my_stadiums")
     kb.adjust(1)
     return kb.as_markup()
